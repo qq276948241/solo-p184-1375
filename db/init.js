@@ -75,11 +75,12 @@ db.exec(`
     user_id INTEGER NOT NULL REFERENCES users(id),
     class_instance_id INTEGER NOT NULL REFERENCES class_instances(id),
     type TEXT NOT NULL CHECK(type IN ('group','private')),
-    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','cancelled')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','cancelled','completed')),
     price_paid INTEGER NOT NULL DEFAULT 0,
     duration INTEGER NOT NULL DEFAULT 60,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    cancelled_at TEXT
+    cancelled_at TEXT,
+    reviewed INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS membership_cards (

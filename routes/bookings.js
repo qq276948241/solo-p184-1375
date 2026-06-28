@@ -10,7 +10,8 @@ function handleService(res, fn) {
     return fn();
   } catch (err) {
     if (err && err.status) {
-      return res.status(err.status).json({ error: err.message });
+      res.status(err.status).json({ error: err.message });
+      return null;
     }
     throw err;
   }

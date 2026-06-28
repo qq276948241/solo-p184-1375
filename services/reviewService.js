@@ -1,6 +1,8 @@
 const db = require('../db');
 const { parsePagination, addStars } = require('../utils/common');
 
+const ACTIVE_FILTER = "deleted_at IS NULL";
+
 const ServiceError = class extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -46,11 +48,22 @@ function submitReview(userId, bookingId, rating, comment) {
     throw new ServiceError('课程尚未开始，需等课程结束后再评价');
   }
 
+  const existingSoftDeleted = db.prepare(
+    `SELECT id FROM reviews WHERE booking_id = ? AND deleted_at IS NOT NULL`
+  ).get(bookingId);
+
   const transaction = db.transaction(() => {
-    db.prepare(`
-      INSERT INTO reviews (booking_id, coach_id, user_id, rating, comment)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(bookingId, instance.coach_id, userId, ratingNum, commentText);
+    if (existingSoftDeleted) {
+      db.prepare(`
+        UPDATE reviews SET rating = ?, comment = ?, deleted_at = NULL, created_at = datetime('now')
+        WHERE id = ?
+      `).run(ratingNum, commentText, existingSoftDeleted.id);
+    } else {
+      db.prepare(`
+        INSERT INTO reviews (booking_id, coach_id, user_id, rating, comment)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(bookingId, instance.coach_id, userId, ratingNum, commentText);
+    }
     db.prepare('UPDATE bookings SET reviewed = 1 WHERE id = ?').run(bookingId);
   });
 
@@ -71,6 +84,15 @@ function submitReview(userId, bookingId, rating, comment) {
   };
 }
 
+function softDeleteReviewByBookingId(bookingId) {
+  const review = db.prepare(
+    `SELECT id FROM reviews WHERE booking_id = ? AND deleted_at IS NULL`
+  ).get(bookingId);
+  if (!review) return 0;
+  db.prepare(`UPDATE reviews SET deleted_at = datetime('now') WHERE id = ?`).run(review.id);
+  return 1;
+}
+
 function getCoachReviews(coachId, query) {
   const coach = db.prepare('SELECT id, name, level FROM coaches WHERE id = ?').get(coachId);
   if (!coach) {
@@ -78,7 +100,7 @@ function getCoachReviews(coachId, query) {
   }
 
   const { page, pageSize, offset } = parsePagination(query);
-  const total = db.prepare('SELECT COUNT(*) AS cnt FROM reviews WHERE coach_id = ?').get(coachId).cnt;
+  const total = db.prepare(`SELECT COUNT(*) AS cnt FROM reviews WHERE coach_id = ? AND ${ACTIVE_FILTER}`).get(coachId).cnt;
 
   const stats = db.prepare(`
     SELECT AVG(rating) AS avg_rating, COUNT(*) AS total_count,
@@ -87,7 +109,7 @@ function getCoachReviews(coachId, query) {
            SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) AS s3,
            SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) AS s2,
            SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) AS s1
-    FROM reviews WHERE coach_id = ?
+    FROM reviews r WHERE r.coach_id = ? AND ${ACTIVE_FILTER}
   `).get(coachId);
 
   const rows = db.prepare(`
@@ -98,7 +120,7 @@ function getCoachReviews(coachId, query) {
     JOIN bookings b ON b.id = r.booking_id
     JOIN class_instances ci ON ci.id = b.class_instance_id
     JOIN class_templates ct ON ct.id = ci.class_template_id
-    WHERE r.coach_id = ?
+    WHERE r.coach_id = ? AND ${ACTIVE_FILTER}
     ORDER BY r.created_at DESC
     LIMIT ? OFFSET ?
   `).all(coachId, pageSize, offset);
@@ -135,7 +157,7 @@ function getBookingReview(userId, bookingId) {
     JOIN class_instances ci ON ci.id = b.class_instance_id
     JOIN class_templates ct ON ct.id = ci.class_template_id
     JOIN coaches c ON c.id = r.coach_id
-    WHERE r.booking_id = ?
+    WHERE r.booking_id = ? AND ${ACTIVE_FILTER}
   `).get(bookingId);
 
   if (!review) {
@@ -146,7 +168,7 @@ function getBookingReview(userId, bookingId) {
 
 function getMyReviews(userId, query) {
   const { page, pageSize, offset } = parsePagination(query);
-  const total = db.prepare('SELECT COUNT(*) AS cnt FROM reviews WHERE user_id = ?').get(userId).cnt;
+  const total = db.prepare(`SELECT COUNT(*) AS cnt FROM reviews WHERE user_id = ? AND ${ACTIVE_FILTER}`).get(userId).cnt;
 
   const rows = db.prepare(`
     SELECT r.*,
@@ -157,7 +179,7 @@ function getMyReviews(userId, query) {
     JOIN bookings b ON b.id = r.booking_id
     JOIN class_instances ci ON ci.id = b.class_instance_id
     JOIN class_templates ct ON ct.id = ci.class_template_id
-    WHERE r.user_id = ?
+    WHERE r.user_id = ? AND ${ACTIVE_FILTER}
     ORDER BY r.created_at DESC
     LIMIT ? OFFSET ?
   `).all(userId, pageSize, offset);
@@ -171,6 +193,7 @@ function getMyReviews(userId, query) {
 module.exports = {
   ServiceError,
   submitReview,
+  softDeleteReviewByBookingId,
   getCoachReviews,
   getBookingReview,
   getMyReviews

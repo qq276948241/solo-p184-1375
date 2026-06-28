@@ -21,6 +21,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user_id);
 `);
 
+const reviewCols = db.prepare("PRAGMA table_info(reviews)").all().map(c => c.name);
+if (!reviewCols.includes('deleted_at')) {
+  db.exec("ALTER TABLE reviews ADD COLUMN deleted_at TEXT");
+}
+db.exec("CREATE INDEX IF NOT EXISTS idx_reviews_deleted ON reviews(deleted_at)");
+
 const bookingCols = db.prepare("PRAGMA table_info(bookings)").all().map(c => c.name);
 if (!bookingCols.includes('reviewed')) {
   db.exec("ALTER TABLE bookings ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0");

@@ -13,7 +13,7 @@ router.get('/coaches', authMiddleware, (req, res) => {
            COUNT(r.id) AS review_count
     FROM coaches c
     LEFT JOIN coach_pricing cp ON cp.coach_level = c.level
-    LEFT JOIN reviews r ON r.coach_id = c.id
+    LEFT JOIN reviews r ON r.coach_id = c.id AND r.deleted_at IS NULL
     GROUP BY c.id
     ORDER BY c.id
   `).all();
@@ -32,7 +32,7 @@ router.get('/coaches/:id', authMiddleware, (req, res) => {
            COUNT(r.id) AS review_count
     FROM coaches c
     LEFT JOIN coach_pricing cp ON cp.coach_level = c.level
-    LEFT JOIN reviews r ON r.coach_id = c.id
+    LEFT JOIN reviews r ON r.coach_id = c.id AND r.deleted_at IS NULL
     WHERE c.id = ?
     GROUP BY c.id
   `).get(req.params.id);

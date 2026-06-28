@@ -9,6 +9,7 @@ const {
   computeEndTime
 } = require('../utils/common');
 
+const reviewService = require('./reviewService');
 const ServiceError = require('./reviewService').ServiceError;
 
 const PRIVATE_DURATIONS = [30, 60, 90, 120];
@@ -169,8 +170,25 @@ function cancelBooking(userId, bookingId) {
   const { rate, label } = getRefundRate(`${instance.date}T${instance.start_time}:00`);
   const refundAmount = Math.round(booking.price_paid * rate);
 
+  if (booking.type === 'private') {
+    const pricing = db.prepare(`
+      SELECT cp.price_per_hour
+      FROM coaches c
+      JOIN coach_pricing cp ON cp.coach_level = c.level
+      WHERE c.id = ?
+    `).get(instance.coach_id);
+    if (pricing) {
+      const expectedPrice = Math.round(pricing.price_per_hour * (booking.duration / 60));
+      if (expectedPrice !== booking.price_paid) {
+        console.warn(`[cancelBooking] 私教预约 ${bookingId} price_paid=${booking.price_paid} 与时长计算值 ${expectedPrice} 不一致，以实际支付为准退费`);
+      }
+    }
+  }
+
+  const reviewDeleted = reviewService.softDeleteReviewByBookingId(bookingId);
+
   db.transaction(() => {
-    db.prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = datetime('now') WHERE id = ?").run(bookingId);
+    db.prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = datetime('now'), reviewed = 0 WHERE id = ?").run(bookingId);
     db.prepare('UPDATE class_instances SET booked_count = booked_count - 1 WHERE id = ?').run(instance.id);
     if (instance.status === 'full') {
       db.prepare("UPDATE class_instances SET status = 'open' WHERE id = ?").run(instance.id);
@@ -190,7 +208,8 @@ function cancelBooking(userId, bookingId) {
       refund_rate: rate,
       refund_amount: refundAmount,
       rule: label
-    }
+    },
+    review_soft_deleted: reviewDeleted === 1
   };
 }
 
