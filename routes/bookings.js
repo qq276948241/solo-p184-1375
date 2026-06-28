@@ -331,4 +331,69 @@ router.get('/refund-rules', authMiddleware, (req, res) => {
   res.json({ rules: CANCEL_REFUND_RULES });
 });
 
+router.post('/:id/review', authMiddleware, (req, res) => {
+  const userId = req.user.id;
+  const bookingId = parseInt(req.params.id, 10);
+  const { rating, comment } = req.body;
+
+  if (req.body.rating === undefined || req.body.rating === null) {
+    return res.status(400).json({ error: '缺少星级 rating 必填' });
+  }
+  const ratingNum = parseInt(rating, 10);
+  if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+    return res.status(400).json({ error: '星级 rating 必须是 1-5 整数' });
+  }
+  const commentText = comment == undefined ? '' : String(comment);
+  if (commentText.length > 200) {
+    return res.status(400).json({ error: '评论不能超过 200 字' });
+  }
+
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ? AND user_id = ?').get(bookingId, userId);
+  if (!booking) {
+    return res.status(404).json({ error: '预约不存在' });
+  }
+  if (booking.status === 'cancelled') {
+    return res.status(400).json({ error: '已取消的预约不能评价' });
+  }
+  if (booking.reviewed === 1) {
+    return res.status(409).json({ error: '该预约已评价，不可重复提交' });
+  }
+
+  const instance = db.prepare('SELECT * FROM class_instances WHERE id = ?').get(booking.class_instance_id);
+  if (!instance) {
+    return res.status(500).json({ error: '课次数据异常' });
+  }
+  const classStart = new Date(`${instance.date}T${instance.start_time}:00`).getTime();
+  if (classStart > Date.now()) {
+    return res.status(400).json({ error: '课程尚未开始，需等课程结束后再评价' });
+  }
+
+  const transaction = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO reviews (booking_id, coach_id, user_id, rating, comment)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(bookingId, instance.coach_id, userId, ratingNum, commentText);
+    db.prepare('UPDATE bookings SET reviewed = 1 WHERE id = ?').run(bookingId);
+  });
+
+  try {
+    transaction();
+  } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) {
+      return res.status(409).json({ error: '该预约已评价，不可重复提交' });
+    }
+    throw err;
+  }
+
+  res.status(201).json({
+    message: '评价提交成功',
+    review: {
+      booking_id: bookingId,
+      coach_id: instance.coach_id,
+      rating: ratingNum,
+      comment: commentText
+    }
+  });
+});
+
 module.exports = router;

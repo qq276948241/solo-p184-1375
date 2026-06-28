@@ -8,24 +8,42 @@ const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五
 
 router.get('/coaches', authMiddleware, (req, res) => {
   const coaches = db.prepare(`
-    SELECT c.*, cp.price_per_hour
+    SELECT c.*, cp.price_per_hour,
+           ROUND(AVG(r.rating), 1) AS avg_rating,
+           COUNT(r.id) AS review_count
     FROM coaches c
     LEFT JOIN coach_pricing cp ON cp.coach_level = c.level
+    LEFT JOIN reviews r ON r.coach_id = c.id
+    GROUP BY c.id
     ORDER BY c.id
   `).all();
-  res.json({ coaches });
+  const cleaned = coaches.map(c => ({
+    ...c,
+    avg_rating: c.avg_rating ? Number(c.avg_rating) : 0,
+    review_count: c.review_count || 0
+  }));
+  res.json({ coaches: cleaned });
 });
 
 router.get('/coaches/:id', authMiddleware, (req, res) => {
   const coach = db.prepare(`
-    SELECT c.*, cp.price_per_hour
+    SELECT c.*, cp.price_per_hour,
+           ROUND(AVG(r.rating), 1) AS avg_rating,
+           COUNT(r.id) AS review_count
     FROM coaches c
     LEFT JOIN coach_pricing cp ON cp.coach_level = c.level
+    LEFT JOIN reviews r ON r.coach_id = c.id
     WHERE c.id = ?
+    GROUP BY c.id
   `).get(req.params.id);
   if (!coach) {
     return res.status(404).json({ error: '教练不存在' });
   }
+  const cleanedCoach = {
+    ...coach,
+    avg_rating: coach.avg_rating ? Number(coach.avg_rating) : 0,
+    review_count: coach.review_count || 0
+  };
   const schedules = db.prepare(`
     SELECT cs.*, ct.name AS class_name, ct.type AS class_type, ct.duration, ct.price
     FROM coach_schedules cs
@@ -33,7 +51,7 @@ router.get('/coaches/:id', authMiddleware, (req, res) => {
     WHERE cs.coach_id = ?
     ORDER BY cs.weekday, cs.start_time
   `).all(coach.id);
-  res.json({ coach, schedules });
+  res.json({ coach: cleanedCoach, schedules });
 });
 
 router.get('/classes', authMiddleware, (req, res) => {

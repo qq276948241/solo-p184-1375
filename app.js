@@ -5,6 +5,7 @@ const authRoutes = require('./routes/auth');
 const courseRoutes = require('./routes/courses');
 const bookingRoutes = require('./routes/bookings');
 const membershipRoutes = require('./routes/membership');
+const reviewRoutes = require('./routes/reviews');
 
 const app = express();
 const PORT = process.env.PORT || 3084;
@@ -33,6 +34,7 @@ app.get('/', (req, res) => {
       bookings: {
         'POST /api/bookings/create': '创建预约',
         'POST /api/bookings/:id/cancel': '取消预约',
+        'POST /api/bookings/:id/review': '提交教练评价',
         'GET  /api/bookings/my': '我的预约',
         'GET  /api/bookings/refund-rules': '退费规则'
       },
@@ -42,6 +44,11 @@ app.get('/', (req, res) => {
         'POST /api/membership/:id/topup': '充值',
         'GET  /api/membership/balance': '余额查询',
         'GET  /api/membership/config': '卡类型配置'
+      },
+      reviews: {
+        'GET  /api/reviews/coach/:coachId': '教练评价列表 (?page=&page_size=)',
+        'GET  /api/reviews/booking/:bookingId': '某预约的评价',
+        'GET  /api/reviews/my': '我的评价列表 (?page=&page_size=)'
       }
     }
   });
@@ -51,6 +58,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/membership', membershipRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 app.use((err, req, res, _next) => {
   console.error('Unhandled error:', err);
