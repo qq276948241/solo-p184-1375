@@ -1,0 +1,16 @@
+{
+  "name": "fitness-studio-backend",
+  "version": "1.0.0",
+  "description": "社区健身工作室课预约后端",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "init-db": "node db/init.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
